@@ -1,2 +1,6 @@
 # SQL_Task_App
-SQL Database for notating Tasks among different users
+
+Beiträger
+Gian und Halldor
+
+18.12.2025
