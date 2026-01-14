@@ -1,3 +1,5 @@
+-- Datenbankschema für die Task App
+
 -- Benutzer-Tabelle
 CREATE TABLE Benutzer (
     BenutzerID INT PRIMARY KEY IDENTITY(1,1),
@@ -39,7 +41,11 @@ CREATE TABLE Erinnerungen (
     ErinnerungID INT PRIMARY KEY IDENTITY(1,1),
     AufgabeID INT NOT NULL,
     Erinnerungszeit DATETIME NOT NULL,
-    Wichtigkeit INT NOT NULL, -- z.B. 1 = niedrig, 2 = mittel, 3 = hoch
+    Wichtigkeit INT NOT NULL CHECK (Wichtigkeit BETWEEN 1 AND 3), -- 1 = niedrig, 2 = mittel, 3 = hoch
     Gesendet BIT NOT NULL DEFAULT 0,
     FOREIGN KEY (AufgabeID) REFERENCES Aufgaben(AufgabeID) ON DELETE CASCADE
 );
+
+-- Indexe für schnellere Abfragen
+CREATE INDEX IX_Aufgaben_BenutzerID ON Aufgaben(BenutzerID);
+CREATE INDEX IX_Erinnerungen_Zeit ON Erinnerungen(Erinnerungszeit);
