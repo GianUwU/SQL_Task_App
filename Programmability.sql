@@ -1,74 +1,146 @@
 -- Beispiele für Stored Procedures und Functions
 
--- Beispiel 1: Neue Aufgabe mit Kategorien erstellen
+
+-- Test 1: Normale Aufgabe mit allen Daten erstellen
 CALL CreateTask(
     1,                                  -- p_benutzer_id
-    'Complete Project Documentation',   -- p_titel
-    'Write comprehensive documentation for the task management system', -- p_beschreibung
+    'Projekt Dokumentation',            -- p_titel
+    'Umfassende Dokumentation schreiben', -- p_beschreibung
     '2026-02-15 17:00:00',             -- p_deadline
     8.0,                                -- p_geschaetzte_stunden
-    0,                                  -- p_status (nicht erledigt)
+    0,                                  -- p_status
     '1,2',                              -- p_kategorie_ids
-    NULL                                -- p_parent_task_id (keine Elternaufgabe)
+    NULL                                -- p_parent_task_id
 );
 
--- Beispiel 2: Erinnerungen senden
+-- Test 2: Minimale Aufgabe ohne optionale Felder
+CALL CreateTask(
+    1,                                  -- p_benutzer_id
+    'Einfache Aufgabe',                 -- p_titel
+    NULL,                               -- p_beschreibung
+    NULL,                               -- p_deadline
+    NULL,                               -- p_geschaetzte_stunden
+    0,                                  -- p_status
+    '',                                 -- p_kategorie_ids (leer)
+    NULL                                -- p_parent_task_id
+);
+
+-- Test 3: Unteraufgabe mit Elternaufgabe erstellen
+CALL CreateTask(
+    1,                                  -- p_benutzer_id
+    'Unteraufgabe testen',              -- p_titel
+    'Eine Unteraufgabe',                -- p_beschreibung
+    '2026-02-10 12:00:00',             -- p_deadline
+    2.5,                                -- p_geschaetzte_stunden
+    0,                                  -- p_status
+    '1',                                -- p_kategorie_ids
+    1                                   -- p_parent_task_id
+);
+
+-- SendDueReminders Procedure Tests
+
+-- Test 4: Alle fälligen Erinnerungen versenden
 CALL SendDueReminders();
 
--- Beispiel 3: Fortschritt einer Aufgabe prüfen
+-- Test 5: Erinnerungen nach erneutem Aufruf prüfen
+CALL SendDueReminders();
+
+-- Test 6: Gesendete Erinnerungen zählen
+SELECT COUNT(*) AS gesendete_erinnerungen
+FROM erinnerungen
+WHERE gesendet = 1;
+
+-- GetTaskProgress Function Tests
+
+-- Test 7: Fortschritt einer Aufgabe mit Unteraufgaben
 SELECT 
+    a.aufgabe_id,
     a.titel,
-    GetTaskProgress(a.aufgabe_id) AS progress_percentage,
-    CONCAT(ROUND(GetTaskProgress(a.aufgabe_id) * 100, 2), '%') AS progress_display
+    GetTaskProgress(a.aufgabe_id) AS fortschritt,
+    CONCAT(ROUND(GetTaskProgress(a.aufgabe_id) * 100, 0), '%') AS prozent
 FROM aufgaben a
 WHERE a.aufgabe_id = 1;
 
--- Beispiel 4: Verbleibende Tage bis zur Deadline
+-- Test 8: Fortschritt einer Aufgabe ohne Unteraufgaben
+SELECT 
+    a.aufgabe_id,
+    a.titel,
+    GetTaskProgress(a.aufgabe_id) AS fortschritt
+FROM aufgaben a
+WHERE NOT EXISTS (SELECT 1 FROM aufgaben WHERE parent_task_id = a.aufgabe_id)
+LIMIT 1;
+
+-- Test 9: Alle Elternaufgaben mit ihrem Fortschritt
+SELECT 
+    a.aufgabe_id,
+    a.titel,
+    GetTaskProgress(a.aufgabe_id) AS fortschritt,
+    (SELECT COUNT(*) FROM aufgaben WHERE parent_task_id = a.aufgabe_id) AS anzahl_unteraufgaben
+FROM aufgaben a
+WHERE EXISTS (SELECT 1 FROM aufgaben WHERE parent_task_id = a.aufgabe_id);
+
+-- HasUpcomingReminder Function Tests
+
+-- Test 10: Aufgaben mit kommenden Erinnerungen finden
+SELECT 
+    a.aufgabe_id,
+    a.titel,
+    HasUpcomingReminder(a.aufgabe_id) AS hat_erinnerung
+FROM aufgaben a
+WHERE HasUpcomingReminder(a.aufgabe_id) = 1;
+
+-- Test 11: Alle Aufgaben und ihre Erinnerungen prüfen
+SELECT 
+    a.aufgabe_id,
+    a.titel,
+    HasUpcomingReminder(a.aufgabe_id) AS hat_erinnerung,
+    CASE 
+        WHEN HasUpcomingReminder(a.aufgabe_id) = 1 THEN 'Ja'
+        ELSE 'Nein'
+    END AS erinnerung_status
+FROM aufgaben a
+WHERE a.benutzer_id = 1;
+
+-- Test 12: Aufgaben ohne Erinnerungen auflisten
+SELECT 
+    a.aufgabe_id,
+    a.titel
+FROM aufgaben a
+WHERE HasUpcomingReminder(a.aufgabe_id) = 0
+  AND a.status = 0;
+
+-- GetDaysLeft Function Tests
+
+-- Test 13: Verbleibende Tage für alle Aufgaben
 SELECT 
     a.aufgabe_id,
     a.titel,
     a.deadline,
-    GetDaysLeft(a.aufgabe_id) AS days_remaining,
+    GetDaysLeft(a.aufgabe_id) AS tage_verbleibend,
     CASE 
         WHEN GetDaysLeft(a.aufgabe_id) IS NULL THEN 'Keine Deadline'
         WHEN GetDaysLeft(a.aufgabe_id) < 0 THEN 'Überzogen'
-        WHEN GetDaysLeft(a.aufgabe_id) = 0 THEN 'Heute'
-        WHEN GetDaysLeft(a.aufgabe_id) <= 3 THEN 'Bald'
-        ELSE 'Noch nicht'
-    END AS deadline_status
+        WHEN GetDaysLeft(a.aufgabe_id) = 0 THEN 'Heute fällig'
+        WHEN GetDaysLeft(a.aufgabe_id) <= 3 THEN 'Dringend'
+        ELSE 'Normal'
+    END AS dringlichkeit
 FROM aufgaben a
 WHERE a.benutzer_id = 1
 ORDER BY GetDaysLeft(a.aufgabe_id);
 
--- Beispiel 5: Umfassende Aufgabenübersicht mit mehreren Functions
+-- Test 14: Nur überzogene Aufgaben anzeigen
 SELECT 
     a.aufgabe_id,
     a.titel,
-    a.status AS is_completed,
-    GetTaskProgress(a.aufgabe_id) AS subtask_progress,
-    GetDaysLeft(a.aufgabe_id) AS days_left,
-    HasUpcomingReminder(a.aufgabe_id) AS has_reminder,
-    CASE 
-        WHEN GetDaysLeft(a.aufgabe_id) IS NULL THEN 'Keine Deadline'
-        WHEN GetDaysLeft(a.aufgabe_id) < 0 THEN 'Überzogen'
-        WHEN GetDaysLeft(a.aufgabe_id) = 0 THEN 'Heute'
-        WHEN GetDaysLeft(a.aufgabe_id) <= 3 THEN 'Bald'
-        ELSE 'Noch nicht'
-    END AS task_priority
+    GetDaysLeft(a.aufgabe_id) AS tage_überzogen
 FROM aufgaben a
-WHERE a.benutzer_id = 1;
+WHERE GetDaysLeft(a.aufgabe_id) < 0
+  AND a.status = 0;
 
--- Beispiel 6: Aufgaben die Aufmerksamkeit benötigen
+-- Test 15: Aufgaben ohne Deadline
 SELECT 
     a.aufgabe_id,
     a.titel,
-    GetDaysLeft(a.aufgabe_id) AS days_left,
-    HasUpcomingReminder(a.aufgabe_id) AS has_reminder,
-    'Benötigt Aufmerksamkeit!' AS alert
+    GetDaysLeft(a.aufgabe_id) AS tage_verbleibend
 FROM aufgaben a
-WHERE a.status = 0  -- Nicht erledigt
-  AND (
-      GetDaysLeft(a.aufgabe_id) < 0  -- Überzogen
-      OR (GetDaysLeft(a.aufgabe_id) <= 3 AND HasUpcomingReminder(a.aufgabe_id) = 0)  -- Bald fällig aber ohne Erinnerung
-  )
-  AND a.benutzer_id = 1;
+WHERE GetDaysLeft(a.aufgabe_id) IS NULL;
